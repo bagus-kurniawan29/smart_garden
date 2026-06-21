@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smart_garden/ExpertSystem.dart';
 import 'package:smart_garden/main.dart';
@@ -38,9 +39,47 @@ void main() {
     expect(weather.inferredSeason, 'Musim Hujan');
   });
 
+  test('Hari 1 memberi misi tanam dan belum memakai pupuk kimia', () {
+    final mission = ExpertSystem.getDailyMission(
+      jenisTanaman: 'Cabai',
+      day: 1,
+      suhu: 27,
+      kelembapanUdara: 60,
+      kelembapanTanah: 65,
+    );
+
+    expect(mission.phase, 'Mulai Menanam');
+    expect(mission.fertilizerToday, isFalse);
+    expect(mission.tasks.join(' '), contains('Belum perlu pupuk'));
+  });
+
+  test('Cabai dapat diselesaikan ketika mencapai umur panen', () {
+    final mission = ExpertSystem.getDailyMission(
+      jenisTanaman: 'Cabai',
+      day: 90,
+      suhu: 27,
+      kelembapanUdara: 60,
+      kelembapanTanah: 65,
+    );
+
+    expect(mission.harvestReady, isTrue);
+    expect(mission.title, 'Saatnya panen!');
+  });
+
   testWidgets('dashboard menampilkan Tunas AI Agent', (tester) async {
     await tester.pumpWidget(const SmartGardenApp());
     expect(find.text('Smart Garden'), findsOneWidget);
     expect(find.text('Tunas AI Agent'), findsOneWidget);
+    expect(find.text('Perjalanan Tanaman'), findsOneWidget);
+    expect(find.text('Mulai Menanam Cabai'), findsOneWidget);
+  });
+
+  testWidgets('timeline game tidak overflow pada layar mobile', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(360, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(const SmartGardenApp());
+    expect(tester.takeException(), isNull);
+    expect(find.text('Preview Hari'), findsOneWidget);
   });
 }

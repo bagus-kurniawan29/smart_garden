@@ -11,6 +11,8 @@ class PlantProfile {
     required this.fertilizer,
     required this.watering,
     required this.prevention,
+    required this.harvestDays,
+    required this.fertilizerIntervalDays,
   });
 
   final String name;
@@ -22,6 +24,8 @@ class PlantProfile {
   final String fertilizer;
   final String watering;
   final String prevention;
+  final int harvestDays;
+  final int fertilizerIntervalDays;
 }
 
 enum WeatherKind { rain, hot, humid, stable }
@@ -38,6 +42,24 @@ class WeatherInsight {
   final String condition;
   final String inferredSeason;
   final String description;
+}
+
+class DailyMission {
+  const DailyMission({
+    required this.day,
+    required this.phase,
+    required this.title,
+    required this.tasks,
+    required this.fertilizerToday,
+    required this.harvestReady,
+  });
+
+  final int day;
+  final String phase;
+  final String title;
+  final List<String> tasks;
+  final bool fertilizerToday;
+  final bool harvestReady;
 }
 
 class ExpertSystem {
@@ -65,6 +87,8 @@ class ExpertSystem {
           'Siram 1 kali pagi hari; tambah siram sore hanya saat tanah cepat kering.',
       prevention:
           'Jaga sirkulasi udara dan periksa kutu daun, trips, serta bercak antraknosa.',
+      harvestDays: 90,
+      fertilizerIntervalDays: 10,
     ),
     'Tomat': PlantProfile(
       name: 'Tomat',
@@ -79,6 +103,8 @@ class ExpertSystem {
           'Siram teratur 1 kali sehari pada pangkal tanaman dan hindari membasahi daun.',
       prevention:
           'Pasang ajir, pangkas daun bawah, dan pantau busuk daun serta lalat buah.',
+      harvestDays: 75,
+      fertilizerIntervalDays: 10,
     ),
     'Terong': PlantProfile(
       name: 'Terong',
@@ -93,6 +119,8 @@ class ExpertSystem {
           'Siram 1 kali sehari; pada cuaca sangat panas cek kembali kelembapan pada sore hari.',
       prevention:
           'Bersihkan gulma dan pantau kumbang daun, tungau, serta busuk buah.',
+      harvestDays: 90,
+      fertilizerIntervalDays: 14,
     ),
     'Sawi': PlantProfile(
       name: 'Sawi',
@@ -107,6 +135,8 @@ class ExpertSystem {
           'Jaga media tetap lembap dengan siram ringan 1-2 kali sehari tanpa menggenangi akar.',
       prevention:
           'Periksa ulat daun dan busuk akar; beri jarak tanam agar daun cepat kering.',
+      harvestDays: 40,
+      fertilizerIntervalDays: 7,
     ),
     'Timun': PlantProfile(
       name: 'Timun',
@@ -121,6 +151,8 @@ class ExpertSystem {
           'Siram merata 1 kali sehari dan pertahankan kelembapan stabil saat pembentukan buah.',
       prevention:
           'Gunakan rambatan, buang daun sakit, dan pantau embun tepung serta lalat buah.',
+      harvestDays: 45,
+      fertilizerIntervalDays: 10,
     ),
   };
 
@@ -170,6 +202,146 @@ class ExpertSystem {
       description:
           'Data sensor menunjukkan kondisi relatif stabil. Perawatan dan penyiraman normal dapat dilanjutkan.',
     );
+  }
+
+  static DailyMission getDailyMission({
+    required String jenisTanaman,
+    required int day,
+    required double suhu,
+    required double kelembapanUdara,
+    required double kelembapanTanah,
+  }) {
+    final profile = getProfile(jenisTanaman);
+    final safeDay = day < 1 ? 1 : day;
+    final harvestReady = safeDay >= profile.harvestDays;
+    final fertilizerToday =
+        safeDay > 1 &&
+        safeDay < profile.harvestDays &&
+        safeDay % profile.fertilizerIntervalDays == 0;
+
+    final phase = switch (safeDay) {
+      1 => 'Mulai Menanam',
+      <= 7 => 'Adaptasi Bibit',
+      _ when safeDay < profile.harvestDays * 0.4 => 'Pertumbuhan Daun',
+      _ when safeDay < profile.harvestDays * 0.75 => 'Bunga dan Buah',
+      _ when !harvestReady => 'Pematangan',
+      _ => 'Siap Panen',
+    };
+
+    final tasks = <String>[];
+    if (safeDay == 1) {
+      tasks.add(
+        'Tanam bibit $jenisTanaman dan pastikan media memiliki drainase yang baik.',
+      );
+      tasks.add(
+        'Belum perlu pupuk kimia hari ini; cukup kompos matang pada media.',
+      );
+    } else if (fertilizerToday) {
+      tasks.add('Hari pemupukan: ${profile.fertilizer}');
+    } else {
+      final nextFertilizer =
+          profile.fertilizerIntervalDays -
+          (safeDay % profile.fertilizerIntervalDays);
+      tasks.add(
+        'Belum perlu pupuk hari ini. Jadwal berikutnya sekitar $nextFertilizer hari lagi.',
+      );
+    }
+
+    if (kelembapanTanah < profile.minSoilMoisture) {
+      tasks.add(
+        'Tanah ${_number(kelembapanTanah)}% terlalu kering. ${profile.watering}',
+      );
+    } else if (kelembapanTanah > profile.maxSoilMoisture) {
+      tasks.add(
+        'Tanah terlalu basah. Tunda penyiraman dan cek lubang drainase.',
+      );
+    } else {
+      tasks.add(
+        'Kelembapan tanah ideal. Pertahankan di ${profile.minSoilMoisture.toInt()}-${profile.maxSoilMoisture.toInt()}%.',
+      );
+    }
+
+    if (suhu < profile.minTemperature || suhu > profile.maxTemperature) {
+      tasks.add(
+        'Suhu ${_number(suhu)} C di luar target ${profile.minTemperature.toInt()}-${profile.maxTemperature.toInt()} C. Lindungi tanaman dari perubahan ekstrem.',
+      );
+    } else {
+      tasks.add('Suhu ${_number(suhu)} C cocok untuk fase hari ini.');
+    }
+
+    if (kelembapanUdara >= 80) {
+      tasks.add(
+        'Udara sangat lembap; periksa jamur dan beri ruang sirkulasi udara.',
+      );
+    }
+
+    if (harvestReady) {
+      tasks
+        ..clear()
+        ..add(
+          '$jenisTanaman sudah mencapai kisaran umur panen ${profile.harvestDays} hari.',
+        )
+        ..add(
+          'Periksa ukuran, warna, dan kematangan hasil sebelum menekan Selesaikan Panen.',
+        );
+    }
+
+    return DailyMission(
+      day: safeDay,
+      phase: phase,
+      title: harvestReady ? 'Saatnya panen!' : 'Misi Hari $safeDay',
+      tasks: tasks,
+      fertilizerToday: fertilizerToday,
+      harvestReady: harvestReady,
+    );
+  }
+
+  static String getQuickAnswer({
+    required String topic,
+    required String jenisTanaman,
+    required int? currentDay,
+    required double suhu,
+    required double kelembapanUdara,
+    required double kelembapanTanah,
+  }) {
+    final profile = getProfile(jenisTanaman);
+    final weather = inferCuaca(
+      suhu: suhu,
+      kelembapanUdara: kelembapanUdara,
+      kelembapanTanah: kelembapanTanah,
+    );
+    final day = currentDay ?? 1;
+    final mission = getDailyMission(
+      jenisTanaman: jenisTanaman,
+      day: day,
+      suhu: suhu,
+      kelembapanUdara: kelembapanUdara,
+      kelembapanTanah: kelembapanTanah,
+    );
+
+    return switch (topic) {
+      'Cuaca' => '${weather.condition}. ${weather.description}',
+      'Siram' =>
+        kelembapanTanah < profile.minSoilMoisture
+            ? 'Tanah sedang kering. ${profile.watering}'
+            : kelembapanTanah > profile.maxSoilMoisture
+            ? 'Jangan siram dulu, tanah masih terlalu basah. Periksa drainase.'
+            : 'Tanah berada di zona ideal. Cukup pantau agar tidak berubah drastis.',
+      'Pupuk' =>
+        currentDay == null
+            ? 'Mulai perjalanan tanam dulu agar Tunas dapat menghitung jadwal pupuk.'
+            : mission.fertilizerToday
+            ? 'Hari ini jadwal pupuk! ${profile.fertilizer}'
+            : mission.tasks.first,
+      'Hama' => profile.prevention,
+      'Panen' =>
+        currentDay == null
+            ? '$jenisTanaman biasanya siap sekitar ${profile.harvestDays} hari setelah dimulai.'
+            : mission.harvestReady
+            ? '$jenisTanaman sudah masuk waktu panen. Periksa kematangan lalu selesaikan perjalanan.'
+            : 'Masih ${profile.harvestDays - currentDay} hari menuju kisaran panen. Kamu sedang di fase ${mission.phase}.',
+      _ => 'Tunas siap membantu merawat $jenisTanaman kamu!',
+    };
   }
 
   static String getSaran({

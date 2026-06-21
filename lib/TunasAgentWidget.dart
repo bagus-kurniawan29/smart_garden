@@ -11,12 +11,20 @@ class TunasAgentWidget extends StatefulWidget {
     required this.jenisTanaman,
     required this.cuaca,
     required this.onPlantChanged,
+    required this.currentDay,
+    required this.suhu,
+    required this.kelembapanUdara,
+    required this.kelembapanTanah,
   });
 
   final String saran;
   final String jenisTanaman;
   final WeatherInsight cuaca;
   final ValueChanged<String> onPlantChanged;
+  final int? currentDay;
+  final int suhu;
+  final int kelembapanUdara;
+  final int kelembapanTanah;
 
   @override
   State<TunasAgentWidget> createState() => _TunasAgentWidgetState();
@@ -26,6 +34,7 @@ class _TunasAgentWidgetState extends State<TunasAgentWidget>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _floatAnimation;
+  String? _quickAnswer;
 
   @override
   void initState() {
@@ -44,6 +53,28 @@ class _TunasAgentWidgetState extends State<TunasAgentWidget>
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant TunasAgentWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.jenisTanaman != widget.jenisTanaman ||
+        oldWidget.currentDay != widget.currentDay) {
+      _quickAnswer = null;
+    }
+  }
+
+  void _ask(String topic) {
+    setState(() {
+      _quickAnswer = ExpertSystem.getQuickAnswer(
+        topic: topic,
+        jenisTanaman: widget.jenisTanaman,
+        currentDay: widget.currentDay,
+        suhu: widget.suhu.toDouble(),
+        kelembapanUdara: widget.kelembapanUdara.toDouble(),
+        kelembapanTanah: widget.kelembapanTanah.toDouble(),
+      );
+    });
   }
 
   Future<void> _showPlantDialog() async {
@@ -210,6 +241,72 @@ class _TunasAgentWidgetState extends State<TunasAgentWidget>
             ],
           ),
           const SizedBox(height: 18),
+          const Text(
+            'Tanya cepat ke Tunas',
+            style: TextStyle(fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _QuickQuestion(
+                label: 'Cuaca',
+                icon: Icons.cloud_rounded,
+                onTap: () => _ask('Cuaca'),
+              ),
+              _QuickQuestion(
+                label: 'Siram',
+                icon: Icons.water_drop_rounded,
+                onTap: () => _ask('Siram'),
+              ),
+              _QuickQuestion(
+                label: 'Pupuk',
+                icon: Icons.compost_rounded,
+                onTap: () => _ask('Pupuk'),
+              ),
+              _QuickQuestion(
+                label: 'Hama',
+                icon: Icons.health_and_safety_rounded,
+                onTap: () => _ask('Hama'),
+              ),
+              _QuickQuestion(
+                label: 'Panen',
+                icon: Icons.emoji_events_rounded,
+                onTap: () => _ask('Panen'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 250),
+            child: _quickAnswer == null
+                ? const SizedBox.shrink()
+                : Container(
+                    key: ValueKey(_quickAnswer),
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 14),
+                    padding: const EdgeInsets.all(15),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFFBEB),
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(4),
+                        topRight: Radius.circular(16),
+                        bottomLeft: Radius.circular(16),
+                        bottomRight: Radius.circular(16),
+                      ),
+                      border: Border.all(color: const Color(0xFFFDE68A)),
+                    ),
+                    child: Text(
+                      _quickAnswer!,
+                      style: const TextStyle(
+                        color: Color(0xFF713F12),
+                        height: 1.45,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+          ),
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(17),
@@ -246,6 +343,30 @@ class _TunasAgentWidgetState extends State<TunasAgentWidget>
           ),
         ],
       ),
+    );
+  }
+}
+
+class _QuickQuestion extends StatelessWidget {
+  const _QuickQuestion({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ActionChip(
+      onPressed: onTap,
+      avatar: Icon(icon, size: 17, color: const Color(0xFF0F766E)),
+      label: Text(label),
+      labelStyle: const TextStyle(fontWeight: FontWeight.w800),
+      backgroundColor: const Color(0xFFF0FDFA),
+      side: const BorderSide(color: Color(0xFF99F6E4)),
     );
   }
 }

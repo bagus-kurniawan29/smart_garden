@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import 'ExpertSystem.dart';
+import 'PlantJourneyWidget.dart';
 import 'TunasAgentWidget.dart';
 import 'garden_database.dart';
 
@@ -56,6 +57,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String selectedPlant = 'Cabai';
   DateTime lastUpdate = DateTime.now();
   DateTime? lastFertilized;
+  CropCycle? activeCropCycle;
+  bool _cycleBusy = false;
   Timer? timer;
   String? _lastToastKey;
 
@@ -98,6 +101,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   bool get fertilizationDue =>
       daysSinceFertilized == null || daysSinceFertilized! >= 7;
+
+  PlantProfile get selectedPlantProfile =>
+      ExpertSystem.getProfile(selectedPlant);
+
+  int? get currentCropDay => activeCropCycle?.currentDay;
+
+  DailyMission? get dailyMission => currentCropDay == null
+      ? null
+      : ExpertSystem.getDailyMission(
+          jenisTanaman: selectedPlant,
+          day: currentCropDay!,
+          suhu: suhu.toDouble(),
+          kelembapanUdara: lembapUdara.toDouble(),
+          kelembapanTanah: lembapTanah.toDouble(),
+        );
 
   WeatherInsight get tunasWeather => ExpertSystem.inferCuaca(
     suhu: suhu.toDouble(),
@@ -204,7 +222,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    _loadFertilizationStatus();
+    _loadPlantData();
     fetchData();
     timer = Timer.periodic(
       const Duration(seconds: 3),
@@ -263,12 +281,78 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return int.tryParse(value.toString()) ?? fallback;
   }
 
-  Future<void> _loadFertilizationStatus() async {
-    final savedDate = await GardenDatabase.instance.getLastFertilization(
-      selectedPlant,
-    );
+  Future<void> _loadPlantData() async {
+    final plant = selectedPlant;
+    final savedDate = await GardenDatabase.instance.getLastFertilization(plant);
+    final cropCycle = await GardenDatabase.instance.getActiveCropCycle(plant);
+    if (!mounted || selectedPlant != plant) return;
+    setState(() {
+      lastFertilized = savedDate;
+      activeCropCycle = cropCycle;
+    });
+  }
+
+  void _changePlant(String plant) {
+    if (plant == selectedPlant) return;
+    setState(() {
+      selectedPlant = plant;
+      lastFertilized = null;
+      activeCropCycle = null;
+    });
+    _loadPlantData();
+  }
+
+  Future<void> _startCropJourney() async {
+    setState(() => _cycleBusy = true);
+    final cycle = await GardenDatabase.instance.startCropCycle(selectedPlant);
     if (!mounted) return;
-    setState(() => lastFertilized = savedDate);
+    setState(() {
+      activeCropCycle = cycle;
+      _cycleBusy = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Perjalanan $selectedPlant dimulai. Selamat datang di Hari 1!',
+        ),
+        backgroundColor: const Color(0xFF15803D),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _completeCropJourney() async {
+    final cycle = activeCropCycle;
+    if (cycle == null || dailyMission?.harvestReady != true) return;
+    setState(() => _cycleBusy = true);
+    await GardenDatabase.instance.completeCropCycle(cycle);
+    if (!mounted) return;
+    setState(() {
+      activeCropCycle = null;
+      _cycleBusy = false;
+    });
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(
+          Icons.emoji_events_rounded,
+          color: Color(0xFFF59E0B),
+          size: 54,
+        ),
+        title: const Text('Perjalanan Selesai!'),
+        content: Text(
+          'Selamat, $selectedPlant kamu sudah mencapai waktu panen. Kamu bisa memulai perjalanan tanaman baru.',
+          textAlign: TextAlign.center,
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Keren!'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _markFertilizedToday() async {
@@ -371,17 +455,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   const SizedBox(height: 18),
                   AlertsPanel(alerts: alerts),
                   const SizedBox(height: 18),
+                  PlantJourneyWidget(
+                    selectedPlant: selectedPlant,
+                    profile: selectedPlantProfile,
+                    currentDay: currentCropDay,
+                    mission: dailyMission,
+                    startedAt: activeCropCycle?.startedAt,
+                    busy: _cycleBusy,
+                    onPlantChanged: _changePlant,
+                    onStart: _startCropJourney,
+                    onComplete: _completeCropJourney,
+                  ),
+                  const SizedBox(height: 18),
                   TunasAgentWidget(
                     saran: tunasAdvice,
                     jenisTanaman: selectedPlant,
                     cuaca: tunasWeather,
-                    onPlantChanged: (plant) {
-                      setState(() {
-                        selectedPlant = plant;
-                        lastFertilized = null;
-                      });
-                      _loadFertilizationStatus();
-                    },
+                    currentDay: currentCropDay,
+                    suhu: suhu,
+                    kelembapanUdara: lembapUdara,
+                    kelembapanTanah: lembapTanah,
+                    onPlantChanged: _changePlant,
                   ),
                   const SizedBox(height: 18),
                   if (isWide)
