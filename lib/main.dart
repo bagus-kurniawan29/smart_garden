@@ -62,6 +62,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Timer? timer;
   String? _lastToastKey;
 
+  // --- Sync state ---
+  bool _isFetching = false;   // guard agar request tidak bertabrakan
+  bool _isConnected = false;  // status koneksi ke ESP
+  int _failCount = 0;         // hitung gagal berturut-turut
+
   final List<SensorRecord> history = [
     SensorRecord(
       31,
@@ -225,7 +230,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _loadPlantData();
     fetchData();
     timer = Timer.periodic(
-      const Duration(seconds: 3),
+      const Duration(seconds: 5),
       (Timer t) => fetchData(),
     );
     WidgetsBinding.instance.addPostFrameCallback((_) => _showAlertToast());
@@ -238,10 +243,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> fetchData() async {
+    if (_isFetching) return;
+    _isFetching = true;
+
     try {
       final response = await http
           .get(Uri.parse('http://192.168.4.1/data'))
-          .timeout(const Duration(seconds: 2));
+          .timeout(const Duration(seconds: 4));
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -255,11 +263,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           fallback: lembapTanah,
         );
 
+        if (!mounted) return;
         setState(() {
           suhu = nextSuhu;
           lembapUdara = nextUdara;
           lembapTanah = nextTanah;
           lastUpdate = DateTime.now();
+          _isConnected = true;
+          _failCount = 0;
           history.insert(
             0,
             SensorRecord(nextSuhu, nextUdara, nextTanah, lastUpdate),
@@ -270,15 +281,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
         });
         _showAlertToast();
       }
-    } catch (_) {
-      // ESP8266 biasanya memakai Wi-Fi lokal tanpa internet. Data terakhir tetap dipakai.
+    } catch (e) {
+      debugPrint('[SmartGarden] Gagal fetch data dari ESP8266: $e');
+      if (!mounted) return;
+      setState(() {
+        _failCount++;
+        if (_failCount >= 2) {
+          _isConnected = false;
+        }
+      });
+    } finally {
+      _isFetching = false;
     }
   }
 
   int _asInt(dynamic value, {required int fallback}) {
     if (value is int) return value;
     if (value is double) return value.round();
-    return int.tryParse(value.toString()) ?? fallback;
+    if (value is String) {
+      final d = double.tryParse(value);
+      if (d != null) return d.round();
+    }
+    return int.tryParse(value?.toString() ?? '') ?? fallback;
   }
 
   Future<void> _loadPlantData() async {
@@ -416,6 +440,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   Header(
                     lastUpdate: _formatDateTime(lastUpdate),
                     alertCount: alerts.length,
+                    isConnected: _isConnected,
                   ),
                   const SizedBox(height: 18),
                   _ResponsiveGrid(
@@ -667,10 +692,16 @@ SensorStatus soilHumidityStatus(int value) {
 }
 
 class Header extends StatelessWidget {
-  const Header({super.key, required this.lastUpdate, required this.alertCount});
+  const Header({
+    super.key,
+    required this.lastUpdate,
+    required this.alertCount,
+    required this.isConnected,
+  });
 
   final String lastUpdate;
   final int alertCount;
+  final bool isConnected;
 
   @override
   Widget build(BuildContext context) {
@@ -708,14 +739,35 @@ class Header extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 3),
-                Text(
-                  'Monitoring lokal ESP | Update $lastUpdate',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFFCBD5E1),
-                    fontSize: 13,
-                  ),
+                Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: isConnected
+                            ? const Color(0xFF10B981)
+                            : const Color(0xFFEF4444),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        isConnected
+                            ? 'Live ESP | Update $lastUpdate'
+                            : 'Offline | Cek WiFi ESP & Data Seluler',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: isConnected
+                              ? const Color(0xFFCBD5E1)
+                              : const Color(0xFFFCA5A5),
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
